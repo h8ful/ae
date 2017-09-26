@@ -24,6 +24,7 @@ class MLIRDataset(Dataset):
         if self.part == 'train':
             self.train = mmread(os.path.join(root_dir, 'train.%s' % cv)).A.astype(np.float32)
             self.newusers = mmread(os.path.join(root_dir, 'input.%s' % cv)).A.astype(np.float32)
+            self.known = self.train + self.newusers
             # self.train = self.train + self.newusers
         elif self.part == 'test':
             self.test = mmread(os.path.join(root_dir, 'eval.%s' % cv)).A.astype(np.float32)
@@ -39,7 +40,7 @@ class MLIRDataset(Dataset):
 
     def __getitem__(self, idx):
         if self.part == 'train':
-            sample = self.train[:,idx]
+            sample = self.known[:,idx]
         elif self.part == 'test':
             sample = self.test[:,idx]
         elif self.part == 'all':
