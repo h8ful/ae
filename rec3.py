@@ -84,7 +84,7 @@ class IBCF():
 
     def score_pair_ib(self, user_id, item_id):
         neighborhood = self.item_neighbors_[item_id]
-        score = self.train_ratings[user_id, neighborhood].dot(self.similarities_[item_id,neighborhood])
+        score = self.input_ratings[user_id, neighborhood].dot(self.similarities_[item_id,neighborhood])
         return  score
 
     def fit(self,train_ratings, profile):
@@ -99,17 +99,19 @@ class IBCF():
         self.compute_similarity(profile)
         return self
 
-    def compute_score(self,topN, targets):
+    def compute_score(self,input_ratings, topN, targets):
+        self.input_ratings = input_ratings
         self.topN = topN
         self.find_neighbors()
+        self.known_ratings = self.train_ratings + self.input_ratings
 
         self.predicted_score_ = np.zeros(self.train_ratings.shape)
         for u in targets:
-            consumed = self.train_ratings[u, :].nonzero()[0]
+            consumed = set(self.input_ratings[u, :].nonzero()[0])
             # import pdb; pdb.set_trace()
-            candinates = [i for k in consumed for i in self.item_neighbors_[k] ]
-            for i in xrange(self.item_num_):
-            # for i in candinates:
+            candinates = list(set([i for k in consumed for i in self.item_neighbors_[k] ]) - (consumed))
+            # for i in xrange(self.item_num_):
+            for i in candinates:
                 self.predicted_score_[u, i] = self.score_pair_ib(user_id=u, item_id=i)
         return self
 
