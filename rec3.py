@@ -114,7 +114,7 @@ class IBCF():
         self.predicted_score_ = np.zeros(self.train_ratings.shape)
         for u in targets:
             consumed = set(self.input_ratings[u, :].nonzero()[0])
-            self.comsumed_num_[u] =
+            # self.comsumed_num_[u] = set()
             # import pdb; pdb.set_trace()
             candinates = list(set([i for k in consumed for i in self.item_neighbors_[k] ]) - (consumed))
             # for i in xrange(self.item_num_):
