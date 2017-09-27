@@ -2,17 +2,21 @@ import numpy as np
 class Rec():
     def __init__(self):
         self.default_rec_len = 50
-    def set_prediction_matrix(self, prediction_matrix):
+    def set_prediction_matrix(self,known_ratings, prediction_matrix):
         '''
 
         :param prediction_matrix: user*item
         :return:
         '''
-        self.prediction_matrix = prediction_matrix
+        # self.prediction_matrix = prediction_matrix
         self.item_num = self.prediction_matrix.shape[1]
 
+        self.known_ratings = known_ratings
+        self.prediction_matrix = np.multiply(prediction_matrix, 1-known_ratings)
+
+
         return self
-    def produce_rec_list(self, targets):
+    def produce_rec_list(self, train_ratings, targets):
         self.targets = targets
         self.recommendation_ = dict()
         for user in targets:
@@ -104,10 +108,13 @@ class IBCF():
         self.topN = topN
         self.find_neighbors()
         self.known_ratings = self.train_ratings + self.input_ratings
+        self.comsumed_num_ = {}
+        self.candinates_num_ = {}
 
         self.predicted_score_ = np.zeros(self.train_ratings.shape)
         for u in targets:
             consumed = set(self.input_ratings[u, :].nonzero()[0])
+            self.comsumed_num_[u] =
             # import pdb; pdb.set_trace()
             candinates = list(set([i for k in consumed for i in self.item_neighbors_[k] ]) - (consumed))
             # for i in xrange(self.item_num_):
@@ -119,7 +126,7 @@ class IBCF():
         # predict score first, ensure self.predicted_score_ exsit
         try:
             self.rec_ = Rec()
-            self.rec_.set_prediction_matrix(self.predicted_score_)
+            self.rec_.set_prediction_matrix(self.train_ratings+self.input_ratings self.predicted_score_)
             self.rec_.produce_rec_list(targets)
             self.recommendations_ = self.rec_.recommendation_
             return self
