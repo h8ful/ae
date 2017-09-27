@@ -126,7 +126,7 @@ class IBCF():
         # predict score first, ensure self.predicted_score_ exsit
         try:
             self.rec_ = Rec()
-            self.rec_.set_prediction_matrix(self.train_ratings+self.input_ratings self.predicted_score_)
+            self.rec_.set_prediction_matrix(self.train_ratings+self.input_ratings,self.predicted_score_)
             self.rec_.produce_rec_list(targets)
             self.recommendations_ = self.rec_.recommendation_
             return self
