@@ -9,10 +9,10 @@ class Rec():
         :return:
         '''
         # self.prediction_matrix = prediction_matrix
-        self.item_num = self.prediction_matrix.shape[1]
 
         self.known_ratings = known_ratings
         self.prediction_matrix = np.multiply(prediction_matrix, 1-known_ratings)
+        self.item_num = self.prediction_matrix.shape[1]
 
 
         return self
@@ -127,7 +127,7 @@ class IBCF():
         try:
             self.rec_ = Rec()
             self.rec_.set_prediction_matrix(self.train_ratings+self.input_ratings,self.predicted_score_)
-            self.rec_.produce_rec_list(targets)
+            self.rec_.produce_rec_list(self.known_ratings,targets)
             self.recommendations_ = self.rec_.recommendation_
             return self
         except AttributeError:
