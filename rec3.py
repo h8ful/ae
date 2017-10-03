@@ -1,4 +1,5 @@
 import numpy as np
+
 class Rec():
     def __init__(self):
         self.default_rec_len = 50
@@ -28,6 +29,7 @@ class Rec():
             tmp = np.argsort(-1 * self.prediction_matrix[user,disorder_idx])
             self.recommendation_[user] = list(( disorder_idx[tmp] ))
         return self
+
     def evaluate(self, test, rec_len):
         '''
 
@@ -59,10 +61,31 @@ class Rec():
         return self.precision_, self.recall_
 
 from sklearn.metrics.pairwise import pairwise_distances
+# from numba import jit
+# @jit
+def _asymcos(x,alpha=0.2):
+    numerator = x.dot(x.T)
+    dominator_a = np.power(numerator, alpha)
+    dominator_b = np.power(numerator, (1 - alpha))
+    sim = np.zeros_like(numerator).astype(np.float64)
+    for i in xrange(numerator.shape[0]):
+        for j in xrange(numerator.shape[0]):
+            sim[i, j] = numerator[i, j] / dominator_a[i, i] / dominator_b[j, j]
+    return sim
+
 
 class IBCF():
     def __init__(self, sim):
         self.sim = sim
+
+
+    def asymmetric_cosine(self, x, alpha=0.2):
+        '''
+        :param x:
+        :return:
+        '''
+        return _asymcos(x,alpha=0.2)
+
     def compute_similarity(self, profile):
         '''
 
@@ -72,13 +95,16 @@ class IBCF():
         self.item_num_ = profile.shape[0]
         self.similarities_ = np.zeros((self.item_num_, self.item_num_))
         if self.sim == 'dot':
-            self.similarities_ = self.profile.dot(self.profile.T)
+            self.similarities_ = self.profile.dot(self.profile)
+        elif self.sim == 'asymcos':
+            self.similarities_ = self.asymmetric_cosine(self.profile)
         else:
             # import pdb; pdb.set_trace()
             self.similarities_ = 1.0 - pairwise_distances(self.profile, metric=self.sim, n_jobs= 4)
         # set similarity to identity to 0
         self.similarities_ = np.multiply(   self.similarities_, (1-np.eye(self.similarities_.shape[0])))
         return self
+
 
     def find_neighbors(self):
         self.item_neighbors_ = dict()
@@ -124,15 +150,15 @@ class IBCF():
 
     def produce_reclist(self,targets):
         # predict score first, ensure self.predicted_score_ exsit
-        try:
+        if True:
+        # try:
             self.rec_ = Rec()
             self.rec_.set_prediction_matrix(self.train_ratings+self.input_ratings,self.predicted_score_)
             self.rec_.produce_rec_list(self.known_ratings,targets)
             self.recommendations_ = self.rec_.recommendation_
             return self
-        except AttributeError:
-            raise AttributeError('compute score first')
-
+        # except Exception:
+        #     raise Exception
     def evaluate(self, test, rec_len):
         self.test = test
         return self.rec_.evaluate(test=test, rec_len=rec_len)
