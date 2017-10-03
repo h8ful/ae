@@ -95,7 +95,7 @@ class IBCF():
         self.item_num_ = profile.shape[0]
         self.similarities_ = np.zeros((self.item_num_, self.item_num_))
         if self.sim == 'dot':
-            self.similarities_ = self.profile.dot(self.profile)
+            self.similarities_ = self.profile.dot(self.profile.T)
         elif self.sim == 'asymcos':
             self.similarities_ = self.asymmetric_cosine(self.profile)
         else:
