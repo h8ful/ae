@@ -25,6 +25,7 @@ class MLIRDataset(Dataset):
             self.train = mmread(os.path.join(root_dir, 'train.%s' % cv)).A.astype(np.float32)
             self.newusers = mmread(os.path.join(root_dir, 'input.%s' % cv)).A.astype(np.float32)
             self.known = self.train + self.newusers
+            self.train_users = np.unique(self.train.nonzero()[0])
             # self.train = self.train + self.newusers
         elif self.part == 'test':
             self.test = mmread(os.path.join(root_dir, 'eval.%s' % cv)).A.astype(np.float32)
@@ -66,11 +67,14 @@ def load_data(cv):
     train_loader = DataLoader(dataset=train_dataset,
                                        batch_size=batch_size,
                                        shuffle=True,
-                                       num_workers=4)
+                                       num_workers=4,
+                                        pin_memory=True)
     test_loader = DataLoader(dataset=test_dataset,
                                        batch_size=batch_size,
                                        shuffle=False,
-                                       num_workers=4)
+                                       num_workers=4,
+                                        pin_memory = True)
+
     return MyDataset(train_dataset,test_dataset,train_loader, test_loader)
 #
 # for i_batch, sample_batched in enumerate(train_loader):

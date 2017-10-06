@@ -70,7 +70,10 @@ def _asymcos(x,alpha=0.2):
     sim = np.zeros_like(numerator).astype(np.float64)
     for i in xrange(numerator.shape[0]):
         for j in xrange(numerator.shape[0]):
-            sim[i, j] = numerator[i, j] / dominator_a[i, i] / dominator_b[j, j]
+            if dominator_a[i, i] ==0 or dominator_b[j, j] == 0:
+                sim[i,j] = 0
+            else:
+                sim[i, j] = numerator[i, j] / dominator_a[i, i] / dominator_b[j, j]
     return sim
 
 
@@ -97,7 +100,7 @@ class IBCF():
         if self.sim == 'dot':
             self.similarities_ = self.profile.dot(self.profile.T)
         elif self.sim == 'asymcos':
-            self.similarities_ = self.asymmetric_cosine(self.profile)
+            self.similarities_ = self.asymmetric_cosine(self.profile,alpha=0.2)
         else:
             # import pdb; pdb.set_trace()
             self.similarities_ = 1.0 - pairwise_distances(self.profile, metric=self.sim, n_jobs= 4)

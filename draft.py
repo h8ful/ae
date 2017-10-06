@@ -97,3 +97,276 @@ for f in fname_list:
     df = pd.read_csv(f,header=None,sep=' ')
     mtx = csr_matrix((df[2].values,(df[0].values, df[1].values)), shape=(user_num,item_num),dtype=np.float32)
     mmwrite("%s.%s"%(part,cv),mtx)
+
+
+
+from sklearn import decomposition
+pca = decomposition.PCA(n_components=3)
+pca.fit(X)
+X = pca.transform(X)
+
+
+def test_stability_70_norm_weights_diff_size_train(hidden_size_param):
+    # decreate lr after 30 epochs (0.001->0.0001)
+    results_wanted = dict()
+    representations = dict()
+    loss_history = list()
+
+    train_precision = dict()
+    test_precision = dict()
+
+    train_cf_precision = dict()
+    test_cf_precision = dict()
+
+    train_mse = dict()
+    test_mse = dict()
+    all_mse = dict()
+
+    num_epochs = 70
+    learning_rate = 0.0001
+
+    import dataset7
+    data7  = dataset7.load_data(1)
+
+    input_size = output_size = 6040
+    net = NetNormWeights(input_size, hidden_size_param, output_size)
+    # net = nn.DataParallel(net)
+
+    certeria = nn.MSELoss()
+    optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
+    print(net)
+    net.cuda()
+    for epoch in range(num_epochs):
+
+        for i_batch, sample_batched in enumerate(data7.train_loader):
+            net.train()
+            id_batch = sample_batched['id']
+            sample = Variable(sample_batched['sample']).cuda()
+            #             groud_truth = Variable(torch.from_numpy(data7.train_dataset.known.T[id_batch.numpy()])).cuda()
+
+            #         dropout_index = 
+            # Forward + Backward + Optimize
+            optimizer.zero_grad()  # zero the gradient buffer
+            outputs = net(sample)
+            loss = certeria(outputs, sample)
+            #         print(i_batch, loss.data[0])
+            loss.backward()
+            optimizer.step()
+
+            #             print ('Epoch [%d/%d], Step [%d/%d], Loss: %.4f'
+            #                        % (epoch + 1, num_epochs, i_batch + 1, 
+            #                           len(data7.train_loader) ,loss.data[0]))
+            loss_history.append(loss.data[0])
+        iters = epoch + 1
+        if (iters) % 10 == 0:
+            print ('_' * 60)
+
+            print('iteration %s:' % iters)
+            name = 'test_stability_70_norm_weights_diff_size_half_half_ae-%s-epoch_%s_cv_%s' % (
+            str(net).replace('\n', ''), epoch + 1, cv)
+            loss_df = pd.DataFrame(loss_history, columns=['loss'])
+            loss_df.plot(title=name)
+            plt.show()
+
+            # save weights
+            torch.save(net.state_dict(), name + '.pt')
+
+            net.eval()
+            # reconstruct 
+            print("reconstructing...")
+
+            input_matrix = Variable(torch.from_numpy(data7.train_dataset.known.T)).cuda()
+            reconstructed = net(input_matrix).cpu()
+            # copy representations
+            representations[iters] = dict()
+            for key in net.representations.keys():
+                representations[iters][key] = net.representations[key].copy()
+                #         print((reconstructed.size()))
+                #             print('computing mse...')
+                #             test_user_mask = np.zeros_like(data7.train_dataset.known)
+                #             test_user_mask[data7.test_dataset.targets,:] = 1
+                #             test_user_mask = Variable(torch.from_numpy(test_user_mask))
+                #             train_mse[iters] = weighted_average(reconstructed, 
+                #                                                 Variable(torch.from_numpy(data7.train_dataset.known)),
+                #                                                 (1-test_user_mask)).data.numpy()[0]
+                #             test_mse[iters] = weighted_average(reconstructed, 
+                #                                                Variable(torch.from_numpy(data7.train_dataset.known)),
+                #                                                (test_user_mask)).data.numpy()[0]
+                #             all_mse[iters] = certeria(reconstructed,Variable(torch.from_numpy(data7.train_dataset.known.T))).data.numpy()[0]
+                #     #         print((reconstructed.size()))
+            print('prediction, computing precision...', end=' ')
+            reconstructed = reconstructed.data.numpy()
+            reconstructed = reconstructed.T
+            #         print((reconstructed.shape))
+
+            #             train_rec = rec_pred(reconstructed, train = np.zeros_like(data7.train_dataset.known), test = data7.train_dataset.known, 
+            #                                  targets = data7.train_dataset.train_users)
+            test_rec = rec_pred(reconstructed, train=data7.train_dataset.known, test=data7.test_dataset.test,
+                                targets=data7.test_dataset.targets)
+            #             train_precision[iters] = (train_rec.precision_, train_rec.recall_)
+            test_precision[iters] = (test_rec.precision_, test_rec.recall_)
+            print((test_rec.precision_, test_rec.recall_))
+
+            #             tsne = manifold.TSNE(n_components=2, init='pca', random_state=0)
+            #             Y = tsne.fit_transform(representations[iters][key])
+            #         #     pd.DataFrame.to_csv('hidden_'+dictname+',np.save',header=False,index=False)
+            #             plt.scatter(Y[:, 0], Y[:, 1],s = 1)
+            #             plt.title("t-SEN, item, %s_hidden, iteration_%s"%(hidden_size_param, iters))
+            #             print ('iteration %s'%iters)
+            #             plt.show()
+
+            # CF on representations
+            print ("CF on representations...")
+            test_cf_precision[iters] = dict()
+            for key in representations[iters].keys():
+                for sim in ['asymcos']:
+                    #                 for sim in ['dot','asymcos','cosine']:
+                    cf = rec3.IBCF(sim=sim)
+                    cf.fit(train_ratings=data7.train_dataset.train, profile=representations[iters][key])
+
+                    for knn in [200]:
+                        #                     for knn in [200,500, 1000,1500]:
+                        print ("CF (%s,%s,%s) on representations..." % ((key, sim, knn)), end=' ')
+
+                        cf.compute_score(input_ratings=data7.train_dataset.newusers, topN=knn,
+                                         targets=data7.test_dataset.targets)
+                        cf.produce_reclist(targets=data7.test_dataset.targets)
+                        tmp_cf_perf = cf.evaluate(test=data7.test_dataset.test, rec_len=5)
+                        test_cf_precision[iters][key, sim, knn] = (tmp_cf_perf)
+                        print (tmp_cf_perf)
+            # pred_perf, cf_perf
+            results_wanted[iters] = ((test_rec.precision_, test_rec.recall_), tmp_cf_perf)
+
+    return results_wanted
+
+
+
+def test_stability_70_norm_weights_diff_size_train_shrink(hidden_size_param):
+    results_wanted = dict()
+    representations = dict()
+    loss_history = list()
+
+    train_precision = dict()
+    test_precision = dict()
+
+    train_cf_precision = dict()
+    test_cf_precision = dict()
+
+    train_mse = dict()
+    test_mse = dict()
+    all_mse = dict()
+
+    num_epochs = 70
+    learning_rate = 0.0001
+
+
+    input_size = output_size = 6040
+    net = NetNormWeights(input_size, hidden_size_param, output_size)
+    # net = nn.DataParallel(net)
+
+    certeria = nn.MSELoss()
+    optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
+    print(net)
+    net.cuda()
+    for epoch in range(num_epochs):
+
+        for i_batch, sample_batched in enumerate(data6.train_loader):
+            net.train()
+            id_batch = sample_batched['id']
+            sample = Variable(sample_batched['sample']).cuda()
+            #             groud_truth = Variable(torch.from_numpy(data6.train_dataset.known.T[id_batch.numpy()])).cuda()
+
+            #         dropout_index = 
+            # Forward + Backward + Optimize
+            optimizer.zero_grad()  # zero the gradient buffer
+            outputs = net(sample)
+            loss = certeria(outputs, sample)
+            #         print(i_batch, loss.data[0])
+            loss.backward()
+            optimizer.step()
+
+            #             print ('Epoch [%d/%d], Step [%d/%d], Loss: %.4f'
+            #                        % (epoch + 1, num_epochs, i_batch + 1, 
+            #                           len(data6.train_loader) ,loss.data[0]))
+            loss_history.append(loss.data[0])
+        iters = epoch + 1
+        if (iters) % 10 == 0:
+            print ('_' * 60)
+
+            print('iteration %s:' % iters)
+            name = 'test_stability_70_norm_weights_diff_size_half_half_ae-%s-epoch_%s_cv_%s' % (
+            str(net).replace('\n', ''), epoch + 1, cv)
+            loss_df = pd.DataFrame(loss_history, columns=['loss'])
+            loss_df.plot(title=name)
+            plt.show()
+
+            # save weights
+            torch.save(net.state_dict(), name + '.pt')
+
+            net.eval()
+            # reconstruct 
+            print("reconstructing...")
+
+            input_matrix = Variable(torch.from_numpy(data6.train_dataset.known.T)).cuda()
+            reconstructed = net(input_matrix).cpu()
+            # copy representations
+            representations[iters] = dict()
+            for key in net.representations.keys():
+                representations[iters][key] = net.representations[key].copy()
+                #         print((reconstructed.size()))
+                #             print('computing mse...')
+                #             test_user_mask = np.zeros_like(data6.train_dataset.known)
+                #             test_user_mask[data6.test_dataset.targets,:] = 1
+                #             test_user_mask = Variable(torch.from_numpy(test_user_mask))
+                #             train_mse[iters] = weighted_average(reconstructed, 
+                #                                                 Variable(torch.from_numpy(data6.train_dataset.known)),
+                #                                                 (1-test_user_mask)).data.numpy()[0]
+                #             test_mse[iters] = weighted_average(reconstructed, 
+                #                                                Variable(torch.from_numpy(data6.train_dataset.known)),
+                #                                                (test_user_mask)).data.numpy()[0]
+                #             all_mse[iters] = certeria(reconstructed,Variable(torch.from_numpy(data6.train_dataset.known.T))).data.numpy()[0]
+                #     #         print((reconstructed.size()))
+            print('prediction, computing precision...', end=' ')
+            reconstructed = reconstructed.data.numpy()
+            reconstructed = reconstructed.T
+            #         print((reconstructed.shape))
+
+            #             train_rec = rec_pred(reconstructed, train = np.zeros_like(data6.train_dataset.known), test = data6.train_dataset.known, 
+            #                                  targets = data6.train_dataset.train_users)
+            test_rec = rec_pred(reconstructed, train=data6.train_dataset.known, test=data6.test_dataset.test,
+                                targets=data6.test_dataset.targets)
+            #             train_precision[iters] = (train_rec.precision_, train_rec.recall_)
+            test_precision[iters] = (test_rec.precision_, test_rec.recall_)
+            print((test_rec.precision_, test_rec.recall_))
+
+            #             tsne = manifold.TSNE(n_components=2, init='pca', random_state=0)
+            #             Y = tsne.fit_transform(representations[iters][key])
+            #         #     pd.DataFrame.to_csv('hidden_'+dictname+',np.save',header=False,index=False)
+            #             plt.scatter(Y[:, 0], Y[:, 1],s = 1)
+            #             plt.title("t-SEN, item, %s_hidden, iteration_%s"%(hidden_size_param, iters))
+            #             print ('iteration %s'%iters)
+            #             plt.show()
+
+            # CF on representations
+            print ("CF on representations...")
+            test_cf_precision[iters] = dict()
+            for key in representations[iters].keys():
+                for sim in ['asymcos']:
+                    #                 for sim in ['dot','asymcos','cosine']:
+                    cf = rec3.IBCF(sim=sim)
+                    cf.fit(train_ratings=data6.train_dataset.train, profile=representations[iters][key])
+
+                    for knn in [200]:
+                        #                     for knn in [200,500, 1000,1500]:
+                        print ("CF (%s,%s,%s) on representations..." % ((key, sim, knn)), end=' ')
+
+                        cf.compute_score(input_ratings=data6.train_dataset.newusers, topN=knn,
+                                         targets=data6.test_dataset.targets)
+                        cf.produce_reclist(targets=data6.test_dataset.targets)
+                        tmp_cf_perf = cf.evaluate(test=data6.test_dataset.test, rec_len=5)
+                        test_cf_precision[iters][key, sim, knn] = (tmp_cf_perf)
+                        print (tmp_cf_perf)
+            # pred_perf, cf_perf
+            results_wanted[iters] = ((test_rec.precision_, test_rec.recall_), tmp_cf_perf)
+
+    return results_wanted
