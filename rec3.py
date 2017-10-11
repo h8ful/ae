@@ -165,3 +165,95 @@ class IBCF():
     def evaluate(self, test, rec_len):
         self.test = test
         return self.rec_.evaluate(test=test, rec_len=rec_len)
+
+
+
+
+
+class UBCF():
+    def __init__(self, sim):
+        self.sim = sim
+
+
+    def asymmetric_cosine(self, x, alpha=0.2):
+        '''
+        :param x:
+        :return:
+        '''
+        return _asymcos(x,alpha=0.2)
+
+    def compute_similarity(self, profile):
+        '''
+
+        :param profile: each row is a profile vector, r*c size
+        :return: similarity matrix, r*r size
+        '''
+        self.user_num_ = profile.shape[0]
+        self.similarities_ = np.zeros((self.user_num_, self.user_num_))
+        if self.sim == 'dot':
+            self.similarities_ = self.profile.dot(self.profile.T)
+        elif self.sim == 'asymcos':
+            self.similarities_ = self.asymmetric_cosine(self.profile,alpha=0.2)
+        else:
+            # import pdb; pdb.set_trace()
+            self.similarities_ = 1.0 - pairwise_distances(self.profile, metric=self.sim, n_jobs= 8)
+        # set similarity to identity to 0
+        self.similarities_ = np.multiply( self.similarities_, (1-np.eye(self.similarities_.shape[0])))
+        return self
+
+
+    def find_neighbors(self):
+        self.user_neighbors_ = dict()
+        for user in xrange(self.user_num_):
+            self.user_neighbors_[user] = np.argpartition(-1 * self.similarities_[user], self.topN)[:self.topN]
+        return  self
+
+    def score_pair_ub(self, user_id, item_id):
+        neighborhood = self.user_neighbors_[user_id]
+        score = (self.similarities_[user_id,neighborhood]).dot(self.known_ratings[neighborhood, item_id])
+        return  score
+
+    def fit(self,train_ratings, profile):
+        '''
+        :param train_ratings: user*user
+        :param profile: user based, user*dim
+        :return: self
+        '''
+        self.train_ratings = train_ratings
+        self.profile = profile
+
+        self.compute_similarity(profile)
+        return self
+
+    def compute_score(self,input_ratings, topN, targets):
+        self.input_ratings = input_ratings
+        self.topN = topN
+        self.find_neighbors()
+        self.known_ratings = self.train_ratings + self.input_ratings
+        self.comsumed_num_ = {}
+        self.candinates_num_ = {}
+
+        self.predicted_score_ = np.zeros(self.train_ratings.shape)
+        for u in targets:
+            consumed = set(self.input_ratings[u, :].nonzero()[0])
+            neighbors = self.user_neighbors_[u]
+            candinates = list(set(self.train_ratings[neighbors].nonzero()[1]) - consumed)
+            # candinates = range(self.train_ratings.shape[1])
+            for i in candinates:
+                self.predicted_score_[u, i] = self.score_pair_ub(user_id=u, item_id=i)
+        return self
+
+    def produce_reclist(self,targets):
+        # predict score first, ensure self.predicted_score_ exsit
+        if True:
+        # try:
+            self.rec_ = Rec()
+            self.rec_.set_prediction_matrix(self.train_ratings+self.input_ratings,self.predicted_score_)
+            self.rec_.produce_rec_list(self.known_ratings,targets)
+            self.recommendations_ = self.rec_.recommendation_
+            return self
+        # except Exception:
+        #     raise Exception
+    def evaluate(self, test, rec_len):
+        self.test = test
+        return self.rec_.evaluate(test=test, rec_len=rec_len)
